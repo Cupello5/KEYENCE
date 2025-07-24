@@ -8,7 +8,7 @@
 
 
 Keyence::Keyence(int num_point, double origin_height) {
-    lDeviceId = 0; 
+    lDeviceId = 0;
     MAX_PROFILE_POINTS = num_point;
     HEIGHT_ORIGIN_LASER = origin_height;
 }
@@ -65,7 +65,7 @@ bool Keyence::connect() {
 
 // **********************************************************************************************************
 bool Keyence::acquire(std::vector<ProfilePoint>& profileData) {
-    
+
     std::cout << "CLEAN MEMORY...\n";
     LJX8IF_ClearMemory(lDeviceId);
 
@@ -107,7 +107,7 @@ bool Keyence::acquire(std::vector<ProfilePoint>& profileData) {
         &profInfo,
         profdata.data(),
         (DWORD)dataSize
-    ); 
+    );
 
     std::cout << "LJX8IF_GetProfile: " << std::hex << result << std::dec << std::endl;
     if (result != 0) {
@@ -118,24 +118,31 @@ bool Keyence::acquire(std::vector<ProfilePoint>& profileData) {
     size_t headerSize = sizeof(LJX8IF_PROFILE_HEADER);
     size_t addr_height = headerSize / sizeof(uint32_t);
     size_t addr_lumi = addr_height + profInfo.wProfileDataCount;
-    profileData.clear();
+    profileData.resize(profInfo.wProfileDataCount);
 
     for (int i = 0; i < profInfo.wProfileDataCount; ++i) {
         double x_val_mm = (profInfo.lXStart + profInfo.lXPitch * i) / 100.0 / 1000.0;
         int32_t z_val = static_cast<int32_t>(profdata[addr_height + i]);
-        if (z_val <= -2147483645) continue; // Skip point not valid 
-        double z_val_mm = z_val / 100.0 / 1000.0;
+        double z_val_mm = 0;
         unsigned char intensity = 0;
-        if (withLumi) {
-            intensity = static_cast<unsigned char>(profdata[addr_lumi + i] & 0xFF);
+        if (z_val <= -2147483645) {
+            z_val_mm = std::numeric_limits<double>::quiet_NaN();
+            intensity = 0;
         }
+        else {
+            z_val_mm = z_val / 100.0 / 1000.0;
+            if (withLumi) {
+                intensity = static_cast<unsigned char>(profdata[addr_lumi + i] & 0xFF);
+            }
+        }
+
         ProfilePoint pt;
         pt.x = x_val_mm;
         pt.z = HEIGHT_ORIGIN_LASER - z_val_mm; // Reference system in Laser orign light
         pt.intensity = intensity;
-        profileData.push_back(pt);
+        profileData.at(i) = pt;
     }
-    std::cout << "Acquired " << profileData.size() << " valid points." << std::endl;
+    std::cout << "Acquired " << profileData.size() << " points." << std::endl;
 
     return true;
 }
